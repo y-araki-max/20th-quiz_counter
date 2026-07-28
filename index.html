@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0b57a4">
+  <title>20周年記念クイズ大会</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- アプリの中身はすべて app.js がここに描画します -->
+  <div id="app"></div>
+
+  <!-- 接続状態の表示（画面右下） -->
+  <div id="conn" class="conn"></div>
+
+  <!-- Firebase（リアルタイム自動集計用のライブラリ）。
+       config.js が空欄の場合は使われず、1台モードで動きます。 -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+  <!-- 設定 → 本体 の順に読み込みます -->
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
