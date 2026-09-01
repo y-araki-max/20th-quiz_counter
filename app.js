@@ -211,6 +211,7 @@
         '<p class="sub">テーブル担当スタッフか、司会（結果画面）かを選びます。</p>' +
         '<button class="btn btn-primary role-btn" id="go-staff">👥 テーブル担当（スタッフ）<small>チームを選んで回答を送信します</small></button>' +
         '<button class="btn btn-secondary role-btn" id="go-mc">🎤 司会・結果画面（MC）<small>集計状況の確認・結果発表を行います</small></button>' +
+        '<button class="btn btn-danger role-btn" id="go-sd">🔥 サドンデス<small>同率順位のタイブレークに使います</small></button>' +
       '</div>'
     );
     app.appendChild(c);
@@ -219,6 +220,7 @@
     }
     document.getElementById("go-staff").onclick = renderTeamSelect;
     document.getElementById("go-mc").onclick = openMC;
+    document.getElementById("go-sd").onclick = renderSDTeams;
   }
 
   /* MC画面を開く（ロックがONなら合言葉画面へ） */
@@ -872,6 +874,157 @@
     openGrandStage(grandHead() +
       '<div class="podium">' + podiumHtml + '</div>' +
       (rest.length ? '<div class="grand-rest">' + restHtml + '</div>' : ''));
+  }
+
+  /* =====================================================================
+     画面⑨：サドンデス（同率順位のタイブレーク）
+       ① 対象チームを選ぶ → ② 各チームの回答（数値）を入力 → ③ 判定
+       ※ この機能は各端末の中だけで完結し、Firebase には保存しません
+         （司会・進行役の端末で、その場で使うための機能です）。
+     ===================================================================== */
+  var sd = { teams: [], answers: {} };
+
+  function renderSDTeams() {
+    screen = "sdTeams";
+    app.innerHTML = "";
+    app.appendChild(el(header()));
+
+    var card = el(
+      '<div class="card">' +
+        '<h2>🔥 サドンデス：対象チームを選択</h2>' +
+        '<p class="sub">同率になったチームをすべてタップしてください（2チーム以上）。</p>' +
+        '<div class="team-grid" id="grid"></div>' +
+      '</div>'
+    );
+    app.appendChild(card);
+
+    var grid = card.querySelector("#grid");
+    TEAM_KEYS.forEach(function (t) {
+      var sel = sd.teams.indexOf(t) >= 0;
+      var cell = el(
+        '<button class="team-cell' + (sel ? ' selected' : '') + '">' +
+          '<span class="tletter">' + esc(t) + '</span>' +
+          '<span class="tname">' + esc(t) + 'チーム</span>' +
+        '</button>'
+      );
+      cell.onclick = function () {
+        var pos = sd.teams.indexOf(t);
+        if (pos >= 0) { sd.teams.splice(pos, 1); } else { sd.teams.push(t); }
+        renderSDTeams();
+      };
+      grid.appendChild(cell);
+    });
+
+    var actions = el(
+      '<div class="btn-row mt">' +
+        '<button class="btn btn-ghost" id="back">← 役割選択にもどる</button>' +
+        '<button class="btn btn-primary" id="next"' + (sd.teams.length < 2 ? ' disabled' : '') + '>次へ →</button>' +
+      '</div>'
+    );
+    app.appendChild(actions);
+    actions.querySelector("#back").onclick = function () { sd.teams = []; renderHome(); };
+    actions.querySelector("#next").onclick = function () {
+      if (sd.teams.length < 2) return;
+      var prev = sd.answers;
+      sd.answers = {};
+      sd.teams.forEach(function (t) { sd.answers[t] = prev[t] || ""; });
+      renderSDAnswer();
+    };
+  }
+
+  function renderSDAnswer() {
+    screen = "sdAnswer";
+    var Q = CONFIG.suddenDeath;
+    app.innerHTML = "";
+    app.appendChild(el(header()));
+
+    if (!Q || Q.answer === undefined || Q.answer === null) {
+      app.appendChild(el(
+        '<div class="card"><h2>🔥 サドンデス</h2>' +
+          '<p class="sub">config.js に suddenDeath（サドンデス問題）が設定されていません。</p></div>'
+      ));
+      app.appendChild(el('<button class="btn btn-ghost" id="back">← もどる</button>'));
+      document.getElementById("back").onclick = renderSDTeams;
+      return;
+    }
+
+    var rowsHtml = "";
+    sd.teams.forEach(function (t) {
+      rowsHtml +=
+        '<div class="sd-row">' +
+          '<span class="sd-label">' + esc(t) + 'チーム</span>' +
+          '<input type="number" inputmode="decimal" data-team="' + esc(t) + '" value="' + esc(sd.answers[t] || "") + '" placeholder="回答の数値">' +
+        '</div>';
+    });
+
+    var card = el(
+      '<div class="card">' +
+        '<h2>🔥 サドンデス問題</h2>' +
+        '<p class="q-text">' + esc(Q.q) + '</p>' +
+        '<p class="sub">各チームの回答（数値）を入力し、「判定する」を押してください。正解に一番近いチームの勝ちです。</p>' +
+        rowsHtml +
+      '</div>'
+    );
+    app.appendChild(card);
+
+    card.querySelectorAll("input[type=number]").forEach(function (input) {
+      input.oninput = function () { sd.answers[input.getAttribute("data-team")] = input.value; };
+    });
+
+    var actions = el(
+      '<div class="btn-row mt">' +
+        '<button class="btn btn-ghost" id="back">← チーム選択にもどる</button>' +
+        '<button class="btn btn-primary" id="judge">判定する</button>' +
+      '</div>'
+    );
+    app.appendChild(actions);
+    actions.querySelector("#back").onclick = renderSDTeams;
+    actions.querySelector("#judge").onclick = renderSDResult;
+  }
+
+  function renderSDResult() {
+    screen = "sdResult";
+    var Q = CONFIG.suddenDeath;
+
+    var rows = sd.teams.map(function (t) {
+      var raw = sd.answers[t];
+      var v = parseFloat(raw);
+      var valid = raw !== "" && !isNaN(v);
+      return { team: t, value: valid ? v : null, diff: valid ? Math.abs(v - Q.answer) : Infinity };
+    });
+    rows.sort(function (a, b) { return a.diff - b.diff; });
+    var topDiff = (rows.length && rows[0].value !== null) ? rows[0].diff : null;
+
+    app.innerHTML = "";
+    app.appendChild(el(header()));
+
+    var rowsHtml = rows.map(function (r) {
+      var isWinner = topDiff !== null && r.diff === topDiff;
+      var label = r.value === null ? "未入力" : r.value;
+      return '<div class="sd-result-row' + (isWinner ? ' winner' : '') + '">' +
+          '<span>' + (isWinner ? '🏆 ' : '') + esc(r.team) + 'チーム</span>' +
+          '<span>回答：' + esc(label) + '</span>' +
+        '</div>';
+    }).join("");
+
+    var card = el(
+      '<div class="card">' +
+        '<h2>🔥 サドンデス結果</h2>' +
+        '<p class="sub">正解：' + esc(Q.answer) + ' ／ 正解に近い順に表示しています。</p>' +
+        rowsHtml +
+      '</div>'
+    );
+    app.appendChild(card);
+
+    var actions = el(
+      '<div class="btn-row mt">' +
+        '<button class="btn btn-secondary" id="redo">チーム選択からやり直す</button>' +
+        '<button class="btn btn-ghost" id="home">最初の画面へ</button>' +
+      '</div>'
+    );
+    app.appendChild(actions);
+    actions.querySelector("#redo").onclick = function () { sd.teams = []; sd.answers = {}; renderSDTeams(); };
+    actions.querySelector("#home").onclick = function () { sd.teams = []; sd.answers = {}; renderHome(); };
   }
 
   // 紙吹雪（外部ライブラリ不要・キャンバスで描画）
