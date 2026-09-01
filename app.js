@@ -220,7 +220,7 @@
     }
     document.getElementById("go-staff").onclick = renderTeamSelect;
     document.getElementById("go-mc").onclick = openMC;
-    document.getElementById("go-sd").onclick = renderSDTeams;
+    document.getElementById("go-sd").onclick = openSuddenDeath;
   }
 
   /* MC画面を開く（ロックがONなら合言葉画面へ） */
@@ -882,17 +882,45 @@
        ※ この機能は各端末の中だけで完結し、Firebase には保存しません
          （司会・進行役の端末で、その場で使うための機能です）。
      ===================================================================== */
-  var sd = { teams: [], answers: {} };
+  var sd = { teams: [], answers: {}, autoDetected: false };
+
+  // 現在の集計から同率チームを検出する（1位の同率はじゃんけんで決める運用のため対象外。
+  // 1位が確定した上で一番上位に同率がある組を優先して返す）
+  function detectTieTeams() {
+    var ranking = computeRanking();
+    var byRank = {};
+    ranking.forEach(function (r) {
+      if (!byRank[r.rank]) byRank[r.rank] = [];
+      byRank[r.rank].push(r.team);
+    });
+    var tieRanks = Object.keys(byRank)
+      .map(Number)
+      .filter(function (rk) { return rk !== 1 && byRank[rk].length > 1; })
+      .sort(function (a, b) { return a - b; });
+    return tieRanks.length ? byRank[tieRanks[0]] : [];
+  }
+
+  // ホーム画面から「🔥 サドンデス」で入るときの入口：自動検出した同率チームを選択済みにする
+  function openSuddenDeath() {
+    sd.teams = detectTieTeams();
+    sd.autoDetected = sd.teams.length > 0;
+    sd.answers = {};
+    renderSDTeams();
+  }
 
   function renderSDTeams() {
     screen = "sdTeams";
     app.innerHTML = "";
     app.appendChild(el(header()));
 
+    var hint = sd.autoDetected
+      ? '<p class="sub">集計結果から、同率になっているチーム（' + sd.teams.map(function (t) { return esc(t) + 'チーム'; }).join('・') + '）を自動で選択しました。必要に応じてタップで追加・解除できます。</p>'
+      : '<p class="sub">同率になったチームをすべてタップしてください（2チーム以上）。</p>';
+
     var card = el(
       '<div class="card">' +
         '<h2>🔥 サドンデス：対象チームを選択</h2>' +
-        '<p class="sub">同率になったチームをすべてタップしてください（2チーム以上）。</p>' +
+        hint +
         '<div class="team-grid" id="grid"></div>' +
       '</div>'
     );
@@ -910,6 +938,7 @@
       cell.onclick = function () {
         var pos = sd.teams.indexOf(t);
         if (pos >= 0) { sd.teams.splice(pos, 1); } else { sd.teams.push(t); }
+        sd.autoDetected = false;
         renderSDTeams();
       };
       grid.appendChild(cell);
@@ -1023,7 +1052,7 @@
       '</div>'
     );
     app.appendChild(actions);
-    actions.querySelector("#redo").onclick = function () { sd.teams = []; sd.answers = {}; renderSDTeams(); };
+    actions.querySelector("#redo").onclick = openSuddenDeath;
     actions.querySelector("#home").onclick = function () { sd.teams = []; sd.answers = {}; renderHome(); };
   }
 
