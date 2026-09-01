@@ -163,8 +163,28 @@
     return '<div class="header">' +
       '<div class="badge">' + esc(CONFIG.companyName) + ' 20th Anniversary</div>' +
       '<h1>' + esc(CONFIG.eventTitle) + '</h1>' +
-      '<p>全' + N_Q + '問・4択クイズ</p>' +
+      '<p>全' + N_Q + '問クイズ</p>' +
       '</div>';
+  }
+  // 1問分の回答が正解かどうか
+  //   4択    … 番号が一致
+  //   並び替え… 配列が順番どおり完全一致
+  //   複数選択… 選んだ番号の集合が正解の集合と完全一致（順不同）
+  function isCorrect(qi, ans) {
+    var Q = QUESTIONS[qi];
+    if (Q.type === "order") {
+      if (!Array.isArray(ans) || ans.length !== Q.answer.length) return false;
+      for (var i = 0; i < ans.length; i++) { if (ans[i] !== Q.answer[i]) return false; }
+      return true;
+    }
+    if (Q.type === "multi") {
+      if (!Array.isArray(ans) || ans.length !== Q.answer.length) return false;
+      var a = ans.slice().sort();
+      var b = Q.answer.slice().sort();
+      for (var j = 0; j < a.length; j++) { if (a[j] !== b[j]) return false; }
+      return true;
+    }
+    return ans === Q.answer;
   }
   function teamScore(team) {
     var ans = store.getTeamAnswers(team);
@@ -172,7 +192,7 @@
     for (var i = 0; i < N_Q; i++) {
       if (ans[i] !== undefined && ans[i] !== null) {
         answered++;
-        if (ans[i] === QUESTIONS[i].answer) correct++;
+        if (isCorrect(i, ans[i])) correct++;
       }
     }
     return { correct: correct, answered: answered };
@@ -379,9 +399,21 @@
       var ans = store.getTeamAnswers(t);
       var firstUnanswered = 0;
       for (var i = 0; i < N_Q; i++) { if (ans[i] === undefined || ans[i] === null) { firstUnanswered = i; break; } if (i === N_Q - 1) firstUnanswered = N_Q; }
-      current.qi = firstUnanswered >= N_Q ? 0 : firstUnanswered;
-      if (firstUnanswered >= N_Q) { renderDone(); } else { renderQuiz(); }
+      if (firstUnanswered >= N_Q) { renderDone(); } else { enterQuiz(firstUnanswered); }
     };
+  }
+
+  // 指定した問題番号に入る（保存済みの回答があれば current.selected に復元してから表示）
+  function enterQuiz(qi) {
+    current.qi = qi;
+    var Q = QUESTIONS[qi];
+    var ans = store.getTeamAnswers(current.team);
+    if (Q.type === "order" || Q.type === "multi") {
+      current.selected = Array.isArray(ans[qi]) ? ans[qi].slice() : [];
+    } else {
+      current.selected = (ans[qi] !== undefined && ans[qi] !== null) ? ans[qi] : null;
+    }
+    renderQuiz();
   }
 
   function saveMembers() {
@@ -398,8 +430,12 @@
     var t = current.team;
     var qi = current.qi;
     var Q = QUESTIONS[qi];
+    var isOrder = Q.type === "order";
+    var isMulti = Q.type === "multi";
+    var isOrderOrMulti = isOrder || isMulti;
     var ans = store.getTeamAnswers(t);
-    current.selected = (ans[qi] !== undefined && ans[qi] !== null) ? ans[qi] : null;
+    // current.selected は enterQuiz() で初期化済み（ここでは再初期化しない。
+    // タップのたびにこの関数を再実行するので、ここで作り直すと選択が消えてしまう）
 
     app.innerHTML = "";
     app.appendChild(el(header()));
@@ -413,22 +449,41 @@
       dots += '<span class="' + cls + '"></span>';
     }
 
-    var choiceLetters = ["A", "B", "C", "D"];
+    var choiceLetters = ["A", "B", "C", "D", "E", "F", "G", "H"];
     var choicesHtml = "";
     Q.choices.forEach(function (ch, idx) {
-      var sel = current.selected === idx ? " selected" : "";
+      var mark, sel;
+      if (isOrder) {
+        var pos = current.selected.indexOf(idx);
+        sel = pos >= 0 ? " selected" : "";
+        mark = pos >= 0 ? (pos + 1) : choiceLetters[idx];
+      } else if (isMulti) {
+        sel = current.selected.indexOf(idx) >= 0 ? " selected" : "";
+        mark = choiceLetters[idx];
+      } else {
+        sel = current.selected === idx ? " selected" : "";
+        mark = choiceLetters[idx];
+      }
       choicesHtml +=
         '<button class="choice' + sel + '" data-idx="' + idx + '">' +
-          '<span class="mark">' + choiceLetters[idx] + '</span>' +
+          '<span class="mark">' + mark + '</span>' +
           '<span>' + esc(ch) + '</span>' +
         '</button>';
     });
+
+    var hint = "";
+    if (isOrder) {
+      hint = '<p class="sub">正しいと思う順番にタップしてください。もう一度タップすると、その選択を取り消せます。</p>';
+    } else if (isMulti) {
+      hint = '<p class="sub">' + Q.answer.length + 'つ選んでください（今の選択：' + current.selected.length + ' / ' + Q.answer.length + '）。もう一度タップすると、その選択を取り消せます。</p>';
+    }
 
     var card = el(
       '<div class="card">' +
         '<div class="q-progress">' + dots + '</div>' +
         '<div class="q-num">' + esc(t) + 'チーム ／ 第' + (qi + 1) + '問（全' + N_Q + '問）</div>' +
         '<p class="q-text">' + esc(Q.q) + '</p>' +
+        hint +
         '<div id="choices">' + choicesHtml + '</div>' +
       '</div>'
     );
@@ -437,34 +492,61 @@
     var choiceEls = card.querySelectorAll(".choice");
     choiceEls.forEach(function (btn) {
       btn.onclick = function () {
-        current.selected = parseInt(btn.getAttribute("data-idx"), 10);
-        choiceEls.forEach(function (b) { b.classList.remove("selected"); });
-        btn.classList.add("selected");
-        sendBtn.disabled = false;
+        var idx = parseInt(btn.getAttribute("data-idx"), 10);
+        if (isOrder) {
+          var pos = current.selected.indexOf(idx);
+          if (pos >= 0) { current.selected.splice(pos, 1); } else { current.selected.push(idx); }
+          renderQuiz();   // 番号バッジを振り直すため再描画
+        } else if (isMulti) {
+          var mpos = current.selected.indexOf(idx);
+          if (mpos >= 0) { current.selected.splice(mpos, 1); renderQuiz(); }
+          else if (current.selected.length < Q.answer.length) { current.selected.push(idx); renderQuiz(); }
+          // すでに選べる数に達している場合、未選択項目のタップは無視（先に選択解除が必要）
+        } else {
+          current.selected = idx;
+          choiceEls.forEach(function (b) { b.classList.remove("selected"); });
+          btn.classList.add("selected");
+          sendBtn.disabled = false;
+        }
       };
     });
+
+    var canSend = isOrder ? (current.selected.length === Q.choices.length)
+      : isMulti ? (current.selected.length === Q.answer.length)
+      : (current.selected !== null);
 
     var actions = el(
       '<div class="btn-row">' +
         '<button class="btn btn-ghost" id="prev">' + (qi === 0 ? '← チーム' : '← 前の問題') + '</button>' +
-        '<button class="btn btn-primary" id="send"' + (current.selected === null ? ' disabled' : '') + '>' +
+        '<button class="btn btn-primary" id="send"' + (canSend ? '' : ' disabled') + '>' +
           (qi === N_Q - 1 ? 'この回答を送信して完了' : 'この回答を送信 →') +
         '</button>' +
       '</div>'
     );
     app.appendChild(actions);
+    if (isOrderOrMulti && current.selected.length > 0) {
+      var resetBtn = el('<button class="btn btn-ghost" id="clear-multi">選択をリセット</button>');
+      app.appendChild(resetBtn);
+      resetBtn.onclick = function () { current.selected = []; renderQuiz(); };
+    }
     app.appendChild(el('<div class="note center">送信後も、最後の完了画面から前に戻って修正できます。</div>'));
 
     var sendBtn = actions.querySelector("#send");
     actions.querySelector("#prev").onclick = function () {
       if (qi === 0) { renderMembers(); }
-      else { current.qi = qi - 1; renderQuiz(); }
+      else { enterQuiz(qi - 1); }
     };
     sendBtn.onclick = function () {
-      if (current.selected === null) return;
-      store.setAnswer(t, qi, current.selected);
+      if (isOrderOrMulti) {
+        var need = isOrder ? Q.choices.length : Q.answer.length;
+        if (current.selected.length !== need) return;
+        store.setAnswer(t, qi, current.selected.slice());
+      } else {
+        if (current.selected === null) return;
+        store.setAnswer(t, qi, current.selected);
+      }
       if (qi === N_Q - 1) { renderDone(); }
-      else { current.qi = qi + 1; renderQuiz(); }
+      else { enterQuiz(qi + 1); }
     };
   }
 
@@ -483,7 +565,17 @@
     var rows = "";
     for (var i = 0; i < N_Q; i++) {
       var a = ans[i];
-      var label = (a === undefined || a === null) ? "<b style='color:#d23b3b'>未回答</b>" : (choiceLetters[a] + "：" + esc(QUESTIONS[i].choices[a]));
+      var Qi = QUESTIONS[i];
+      var label;
+      if (a === undefined || a === null) {
+        label = "<b style='color:#d23b3b'>未回答</b>";
+      } else if (Qi.type === "order") {
+        label = a.map(function (idx) { return esc(Qi.choices[idx]); }).join(" → ");
+      } else if (Qi.type === "multi") {
+        label = a.map(function (idx) { return esc(Qi.choices[idx]); }).join("・");
+      } else {
+        label = choiceLetters[a] + "：" + esc(Qi.choices[a]);
+      }
       rows += '<div class="sent-row"><span class="qn">第' + (i + 1) + '問</span><span>' + label + '</span></div>';
     }
 
@@ -509,7 +601,7 @@
       '</div>'
     );
     app.appendChild(actions);
-    actions.querySelector("#edit").onclick = function () { current.qi = 0; renderQuiz(); };
+    actions.querySelector("#edit").onclick = function () { enterQuiz(0); };
     actions.querySelector("#home").onclick = renderHome;
   }
 
