@@ -55,6 +55,7 @@
             var v = snap.val() || {};
             cache.answers = v.answers || {};
             cache.members = v.members || {};
+            cache.suddenDeath = v.suddenDeath || null;
             emit();
           });
           // 接続状態バッジ
@@ -103,9 +104,46 @@
       getMembers: function () { return cache.members || {}; },
       getTeamAnswers: function (team) { return (cache.answers && cache.answers[team]) || {}; },
 
+      // サドンデスの状態を保存（対象チーム一覧をまとめて上書き）
+      setSuddenDeath: function (data) {
+        cache.suddenDeath = data;
+        saveLocal();
+        if (mode === "online" && db) {
+          db.ref("event/suddenDeath").set(data);
+        } else {
+          emit();
+        }
+      },
+
+      // サドンデスの1チーム分の回答を保存（各チームのスマホから送信）
+      setSuddenDeathAnswer: function (team, value) {
+        if (!cache.suddenDeath) cache.suddenDeath = { active: true, teams: [team], answers: {} };
+        if (!cache.suddenDeath.answers) cache.suddenDeath.answers = {};
+        cache.suddenDeath.answers[team] = value;
+        saveLocal();
+        if (mode === "online" && db) {
+          db.ref("event/suddenDeath/answers/" + team).set(value);
+        } else {
+          emit();
+        }
+      },
+
+      getSuddenDeath: function () { return cache.suddenDeath || null; },
+
+      // サドンデスを終了（対象チームのスマホは通常の画面にもどる）
+      clearSuddenDeath: function () {
+        cache.suddenDeath = null;
+        saveLocal();
+        if (mode === "online" && db) {
+          db.ref("event/suddenDeath").remove();
+        } else {
+          emit();
+        }
+      },
+
       // 全データ消去（MCのリセット用）
       reset: function () {
-        cache = { answers: {}, members: {} };
+        cache = { answers: {}, members: {}, suddenDeath: null };
         saveLocal();
         if (mode === "online" && db) {
           db.ref("event").remove();
@@ -144,6 +182,8 @@
     if (screen === "mc") renderMC();
     if (screen === "result") renderResult();
     if (screen === "teamSelect") renderTeamSelect();
+    if (screen === "sdAnswer") renderSDAnswer();
+    if (screen === "sdTeamAnswer") renderSDTeamAnswer();
   });
 
   /* ---------------------------------------------------------------------
@@ -287,14 +327,19 @@
       '</div>'
     );
     app.appendChild(card);
+    var sdState = store.getSuddenDeath();
+    var sdTeams = (sdState && sdState.active && sdState.teams) || [];
+
     var grid = card.querySelector("#grid");
     TEAM_KEYS.forEach(function (t) {
       var s = teamScore(t);
       var answered = s.answered === N_Q;
+      var inSD = sdTeams.indexOf(t) >= 0;
+      var label = esc(t) + 'チーム' + (inSD ? '（🔥サドンデス回答待ち）' : (answered ? '（送信済）' : ''));
       var cell = el(
-        '<button class="team-cell' + (answered ? ' answered' : '') + '">' +
+        '<button class="team-cell' + (answered ? ' answered' : '') + (inSD ? ' sd-pending' : '') + '">' +
           '<span class="tletter">' + esc(t) + '</span>' +
-          '<span class="tname">' + esc(t) + 'チーム' + (answered ? '（送信済）' : '') + '</span>' +
+          '<span class="tname">' + label + '</span>' +
         '</button>'
       );
       cell.onclick = function () { chooseTeam(t); };
@@ -305,6 +350,12 @@
   }
 
   function chooseTeam(t) {
+    var sdState = store.getSuddenDeath();
+    if (sdState && sdState.active && sdState.teams && sdState.teams.indexOf(t) >= 0) {
+      current.team = t;
+      renderSDTeamAnswer();
+      return;
+    }
     current.team = t;
     current.qi = 0;
     current.selected = null;
@@ -878,9 +929,10 @@
 
   /* =====================================================================
      画面⑨：サドンデス（同率順位のタイブレーク）
-       ① 対象チームを選ぶ → ② 各チームの回答（数値）を入力 → ③ 判定
-       ※ この機能は各端末の中だけで完結し、Firebase には保存しません
-         （司会・進行役の端末で、その場で使うための機能です）。
+       ① 司会が対象チームを選ぶ → ② 各チームが自分のスマホで回答を送信
+         （司会の画面でも直接入力できます＝紙で集めた回答の代理入力用）
+       → ③ 判定
+       対象チーム・回答は Firebase 経由で他の端末とも同期されます。
      ===================================================================== */
   var sd = { teams: [], answers: {}, autoDetected: false };
 
@@ -951,14 +1003,23 @@
       '</div>'
     );
     app.appendChild(actions);
-    actions.querySelector("#back").onclick = function () { sd.teams = []; renderHome(); };
+    actions.querySelector("#back").onclick = function () { sd.teams = []; store.clearSuddenDeath(); renderHome(); };
     actions.querySelector("#next").onclick = function () {
       if (sd.teams.length < 2) return;
-      var prev = sd.answers;
       sd.answers = {};
-      sd.teams.forEach(function (t) { sd.answers[t] = prev[t] || ""; });
+      sd.teams.forEach(function (t) { sd.answers[t] = ""; });
+      // 対象チームを Firebase に反映 → 各チームのスマホに回答画面が出るようになる
+      store.setSuddenDeath({ active: true, teams: sd.teams.slice(), answers: {} });
       renderSDAnswer();
     };
+  }
+
+  // store から届いている最新の回答を sd.answers に反映する（届いていればそちらを優先）
+  function pullSDAnswers() {
+    var live = (store.getSuddenDeath() || {}).answers || {};
+    sd.teams.forEach(function (t) {
+      if (live[t] !== undefined && live[t] !== null && live[t] !== "") { sd.answers[t] = String(live[t]); }
+    });
   }
 
   function renderSDAnswer() {
@@ -977,6 +1038,8 @@
       return;
     }
 
+    pullSDAnswers();
+
     var rowsHtml = "";
     sd.teams.forEach(function (t) {
       rowsHtml +=
@@ -990,7 +1053,7 @@
       '<div class="card">' +
         '<h2>🔥 サドンデス問題</h2>' +
         '<p class="q-text">' + esc(Q.q) + '</p>' +
-        '<p class="sub">各チームの回答（数値）を入力し、「判定する」を押してください。正解に一番近いチームの勝ちです。</p>' +
+        '<p class="sub">対象チームは、自分のスマホの「テーブル担当」からチームを選ぶと回答を送信できます（自動でここに反映されます）。この画面で直接入力・修正することもできます。</p>' +
         rowsHtml +
       '</div>'
     );
@@ -1014,6 +1077,9 @@
   function renderSDResult() {
     screen = "sdResult";
     var Q = CONFIG.suddenDeath;
+
+    pullSDAnswers();   // 判定の直前にも最新の回答を反映
+    store.clearSuddenDeath();   // 判定が終わったので、各チームのスマホは通常画面にもどす
 
     var rows = sd.teams.map(function (t) {
       var raw = sd.answers[t];
@@ -1054,6 +1120,56 @@
     app.appendChild(actions);
     actions.querySelector("#redo").onclick = openSuddenDeath;
     actions.querySelector("#home").onclick = function () { sd.teams = []; sd.answers = {}; renderHome(); };
+  }
+
+  /* --- サドンデス：対象チーム自身のスマホでの回答画面（chooseTeam から遷移） --- */
+  function renderSDTeamAnswer() {
+    screen = "sdTeamAnswer";
+    var t = current.team;
+    var Q = CONFIG.suddenDeath;
+    var sdState = store.getSuddenDeath();
+
+    app.innerHTML = "";
+    app.appendChild(el(header()));
+
+    var stillActive = sdState && sdState.active && sdState.teams && sdState.teams.indexOf(t) >= 0;
+    if (!stillActive || !Q) {
+      app.appendChild(el(
+        '<div class="card"><h2>🔥 サドンデス</h2><p class="sub">サドンデスは終了しました。司会の案内をお待ちください。</p></div>'
+      ));
+      app.appendChild(el('<button class="btn btn-ghost" id="home">最初の画面へ</button>'));
+      document.getElementById("home").onclick = renderHome;
+      return;
+    }
+
+    var sent = sdState.answers && sdState.answers[t] !== undefined && sdState.answers[t] !== null && sdState.answers[t] !== "";
+    var currentVal = sent ? sdState.answers[t] : "";
+
+    var card = el(
+      '<div class="card">' +
+        '<h2>🔥 サドンデス問題</h2>' +
+        '<div class="q-num">' + esc(t) + 'チーム</div>' +
+        '<p class="q-text">' + esc(Q.q) + '</p>' +
+        '<div class="sd-row"><input type="number" inputmode="decimal" id="sd-input" value="' + esc(currentVal) + '" placeholder="回答の数値"></div>' +
+        (sent ? '<p class="note center">送信済みです。もう一度送信すると上書きされます。</p>' : '') +
+      '</div>'
+    );
+    app.appendChild(card);
+
+    var actions = el(
+      '<div class="btn-row mt">' +
+        '<button class="btn btn-ghost" id="back">← チーム選択にもどる</button>' +
+        '<button class="btn btn-primary" id="send">この回答を送信</button>' +
+      '</div>'
+    );
+    app.appendChild(actions);
+    actions.querySelector("#back").onclick = renderTeamSelect;
+    actions.querySelector("#send").onclick = function () {
+      var v = document.getElementById("sd-input").value;
+      if (v === "") return;
+      store.setSuddenDeathAnswer(t, v);
+      renderSDTeamAnswer();
+    };
   }
 
   // 紙吹雪（外部ライブラリ不要・キャンバスで描画）

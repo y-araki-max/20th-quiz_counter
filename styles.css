@@ -95,6 +95,8 @@ body{
 .team-cell.answered .tletter{ color:var(--ok); }
 .team-cell.selected{ border-color:var(--blue-600); background:var(--blue-050); }
 .team-cell.selected .tletter{ color:var(--blue-600); }
+.team-cell.sd-pending{ border-color:var(--ng); background:#fff5f5; }
+.team-cell.sd-pending .tletter{ color:var(--ng); }
 
 /* --- サドンデス --- */
 .sd-row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
