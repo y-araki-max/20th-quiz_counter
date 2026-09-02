@@ -661,10 +661,43 @@
   /* =====================================================================
      画面⑥：MC 集計状況
      ===================================================================== */
+  var mcQi = 0;   // 「この問題の回答状況」で見ている問題番号（この端末の中だけの表示用）
+
   function renderMC() {
     screen = "mc";
     app.innerHTML = "";
     app.appendChild(el(header()));
+
+    // --- 1問ずつ進行する場合用：今の問題を各チームが回答済みか ---
+    var notYet = [];
+    var chipsHtml = TEAM_KEYS.map(function (t) {
+      var ans = store.getTeamAnswers(t);
+      var done = ans[mcQi] !== undefined && ans[mcQi] !== null;
+      if (!done) notYet.push(t);
+      return '<div class="q-status-chip' + (done ? ' done' : '') + '">' +
+          '<span class="qs-team">' + esc(t) + '</span>' +
+          '<span class="qs-mark">' + (done ? '✅ 回答済み' : '⏳ 未回答') + '</span>' +
+        '</div>';
+    }).join("");
+    var notYetLine = notYet.length === 0
+      ? '<p class="sub" style="color:var(--ok);font-weight:700;">全チーム回答済みです</p>'
+      : '<p class="sub">未回答：<b style="color:var(--ng);">' + notYet.map(function (t) { return esc(t) + 'チーム'; }).join('・') + '</b></p>';
+
+    var qCard = el(
+      '<div class="card">' +
+        '<h2>この問題の回答状況</h2>' +
+        '<div class="q-nav">' +
+          '<button id="q-prev"' + (mcQi <= 0 ? ' disabled' : '') + '>← 前の問題</button>' +
+          '<div class="q-nav-label">第' + (mcQi + 1) + '問（全' + N_Q + '問）</div>' +
+          '<button id="q-next"' + (mcQi >= N_Q - 1 ? ' disabled' : '') + '>次の問題 →</button>' +
+        '</div>' +
+        notYetLine +
+        '<div class="q-status-grid">' + chipsHtml + '</div>' +
+      '</div>'
+    );
+    app.appendChild(qCard);
+    qCard.querySelector("#q-prev").onclick = function () { if (mcQi > 0) { mcQi--; renderMC(); } };
+    qCard.querySelector("#q-next").onclick = function () { if (mcQi < N_Q - 1) { mcQi++; renderMC(); } };
 
     var rows = "";
     var answeredTeams = 0;
