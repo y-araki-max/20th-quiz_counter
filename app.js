@@ -56,6 +56,7 @@
             cache.answers = v.answers || {};
             cache.members = v.members || {};
             cache.suddenDeath = v.suddenDeath || null;
+            cache.tieBreaks = v.tieBreaks || [];
             emit();
           });
           // 接続状態バッジ
@@ -141,9 +142,24 @@
         }
       },
 
+      // サドンデスの判定結果を記録（結果発表の順位に反映するため）
+      //   teams … 対象だったチームの配列、order … 勝った順に並べたチーム配列
+      addTieBreak: function (teams, order) {
+        var hist = (cache.tieBreaks || []).slice();
+        hist.push({ teams: teams, order: order });
+        cache.tieBreaks = hist;
+        saveLocal();
+        if (mode === "online" && db) {
+          db.ref("event/tieBreaks").set(hist);
+        } else {
+          emit();
+        }
+      },
+      getTieBreaks: function () { return cache.tieBreaks || []; },
+
       // 全データ消去（MCのリセット用）
       reset: function () {
-        cache = { answers: {}, members: {}, suddenDeath: null };
+        cache = { answers: {}, members: {}, suddenDeath: null, tieBreaks: [] };
         saveLocal();
         if (mode === "online" && db) {
           db.ref("event").remove();
@@ -764,25 +780,14 @@
     app.appendChild(grandBtn);
     grandBtn.onclick = renderGrandResult;
 
-    // スコア計算 → 並べ替え（正解数の多い順、同点はチーム名順）
-    var arr = TEAM_KEYS.map(function (t) {
-      var s = teamScore(t);
-      return { team: t, correct: s.correct, answered: s.answered };
-    });
-    arr.sort(function (a, b) {
-      if (b.correct !== a.correct) return b.correct - a.correct;
-      return a.team < b.team ? -1 : 1;
-    });
+    // スコア計算 → 並べ替え（正解数の多い順、同点はチーム名順。サドンデスの結果があれば反映）
+    var arr = computeRanking();
 
-    // 同点は同順位にする
     var medals = ["🥇", "🥈", "🥉"];
     var rankClass = ["gold", "silver", "bronze"];
     var html = "";
-    var lastScore = null, lastRank = 0;
-    arr.forEach(function (row, i) {
-      var rank;
-      if (row.correct === lastScore) { rank = lastRank; }
-      else { rank = i + 1; lastRank = rank; lastScore = row.correct; }
+    arr.forEach(function (row) {
+      var rank = row.rank;
       var cls = rank <= 3 ? rankClass[rank - 1] : "";
       var medal = rank <= 3 ? medals[rank - 1] : "";
 
@@ -832,10 +837,46 @@
       if (b.correct !== a.correct) return b.correct - a.correct;
       return a.team < b.team ? -1 : 1;
     });
-    var lastScore = null, lastRank = 0;
+
+    // 同点グループのうち、サドンデスで勝敗が決まっているものはその順番を反映する
+    var tieBreaks = store.getTieBreaks();
+    function findOrder(teams) {
+      for (var i = tieBreaks.length - 1; i >= 0; i--) {
+        var tb = tieBreaks[i];
+        if (tb.teams.length === teams.length && teams.every(function (t) { return tb.teams.indexOf(t) >= 0; })) {
+          return tb.order;
+        }
+      }
+      return null;
+    }
+    var resolvedTeams = {};
+    var idx = 0;
+    while (idx < arr.length) {
+      var end = idx;
+      while (end < arr.length && arr[end].correct === arr[idx].correct) end++;
+      if (end - idx > 1) {
+        var order = findOrder(arr.slice(idx, end).map(function (r) { return r.team; }));
+        if (order) {
+          var byTeam = {};
+          arr.slice(idx, end).forEach(function (r) { byTeam[r.team] = r; });
+          var reordered = order.map(function (t) { return byTeam[t]; }).filter(Boolean);
+          for (var k = 0; k < reordered.length; k++) {
+            arr[idx + k] = reordered[k];
+            resolvedTeams[reordered[k].team] = true;
+          }
+        }
+      }
+      idx = end;
+    }
+
+    // 順位を割り振る（同点は同順位。ただしサドンデスで解決済みの相手同士は連番にする）
+    var lastRank = 0;
     arr.forEach(function (row, i) {
-      if (row.correct === lastScore) { row.rank = lastRank; }
-      else { row.rank = i + 1; lastRank = row.rank; lastScore = row.correct; }
+      var prev = i > 0 ? arr[i - 1] : null;
+      var tieWithPrev = prev && prev.correct === row.correct;
+      var bothResolved = tieWithPrev && resolvedTeams[prev.team] && resolvedTeams[row.team];
+      if (tieWithPrev && !bothResolved) { row.rank = lastRank; }
+      else { row.rank = i + 1; lastRank = row.rank; }
     });
     return arr;
   }
@@ -975,20 +1016,12 @@
      ===================================================================== */
   var sd = { teams: [], answers: {}, autoDetected: false };
 
-  // 現在の集計から同率チームを検出する（1位の同率はじゃんけんで決める運用のため対象外。
-  // 1位が確定した上で一番上位に同率がある組を優先して返す）
+  // 現在の集計から、1位が同率になっているチームを検出する
+  // （1位がすでに1チームに決まっている場合はサドンデスは行わない運用のため、対象外＝空配列を返す）
   function detectTieTeams() {
     var ranking = computeRanking();
-    var byRank = {};
-    ranking.forEach(function (r) {
-      if (!byRank[r.rank]) byRank[r.rank] = [];
-      byRank[r.rank].push(r.team);
-    });
-    var tieRanks = Object.keys(byRank)
-      .map(Number)
-      .filter(function (rk) { return rk !== 1 && byRank[rk].length > 1; })
-      .sort(function (a, b) { return a - b; });
-    return tieRanks.length ? byRank[tieRanks[0]] : [];
+    var top = ranking.filter(function (r) { return r.rank === 1; });
+    return top.length > 1 ? top.map(function (r) { return r.team; }) : [];
   }
 
   // ホーム画面から「🔥 サドンデス」で入るときの入口：自動検出した同率チームを選択済みにする
@@ -1005,8 +1038,8 @@
     app.appendChild(el(header()));
 
     var hint = sd.autoDetected
-      ? '<p class="sub">集計結果から、同率になっているチーム（' + sd.teams.map(function (t) { return esc(t) + 'チーム'; }).join('・') + '）を自動で選択しました。必要に応じてタップで追加・解除できます。</p>'
-      : '<p class="sub">同率になったチームをすべてタップしてください（2チーム以上）。</p>';
+      ? '<p class="sub">集計結果から、1位が同率になっているチーム（' + sd.teams.map(function (t) { return esc(t) + 'チーム'; }).join('・') + '）を自動で選択しました。必要に応じてタップで追加・解除できます。</p>'
+      : '<p class="sub">現在、1位の同率はありません。対象チームを手動でタップして選ぶこともできます（2チーム以上）。</p>';
 
     var card = el(
       '<div class="card">' +
@@ -1128,6 +1161,9 @@
     });
     rows.sort(function (a, b) { return a.diff - b.diff; });
     var topDiff = (rows.length && rows[0].value !== null) ? rows[0].diff : null;
+
+    // 判定結果を記録 → 結果発表・大画面の順位にも反映される
+    store.addTieBreak(sd.teams.slice(), rows.map(function (r) { return r.team; }));
 
     app.innerHTML = "";
     app.appendChild(el(header()));
