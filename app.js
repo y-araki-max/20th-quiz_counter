@@ -908,6 +908,7 @@
     document.body.appendChild(overlay);
 
     var confetti = startConfetti(overlay.querySelector(".grand-confetti"));
+    overlay.confetti = confetti;   // 外から burst() を呼べるように（結果発表ボタンの演出用）
     try { if (overlay.requestFullscreen) overlay.requestFullscreen(); } catch (e) {}
 
     function closeGrand() {
@@ -929,20 +930,20 @@
     return overlay;
   }
 
-  function renderGrandResult() {
+  // 表彰台・案内メッセージなど、盛大画面の「中身」を組み立てる（発表ボタンを押した時点の最新集計で作る）
+  function buildGrandContent() {
     var ranking = computeRanking();
     var medals = { 1: "🥇", 2: "🥈", 3: "🥉" };
 
     // --- ① まだ誰も回答していない場合：崩れた表彰台ではなく案内を出す ---
     var anyAnswered = ranking.some(function (r) { return r.answered > 0; });
     if (!anyAnswered) {
-      openGrandStage(grandHead() +
+      return grandHead() +
         '<div class="grand-msg-card">' +
           '<div class="grand-msg-emoji">🏁</div>' +
           '<h2>結果発表は これから！</h2>' +
           '<p>まだ回答が集まっていません。<br>各チームの回答が届くと、ここに盛大な結果が表示されます。</p>' +
-        '</div>');
-      return;
+        '</div>';
     }
 
     // --- ② 全チームが同じ点数（＝順位がつかない）場合：大接戦として表示 ---
@@ -951,14 +952,13 @@
       var chips = ranking.map(function (r) {
         return '<span class="tie-all-chip">' + esc(r.team) + 'チーム</span>';
       }).join("");
-      openGrandStage(grandHead() +
+      return grandHead() +
         '<div class="grand-msg-card">' +
           '<div class="grand-msg-emoji">🎉</div>' +
           '<h2>全チーム 同点！</h2>' +
           '<p>全' + ranking.length + 'チームが <b>' + ranking[0].correct + ' / ' + N_Q + '問</b>正解の大接戦でした！</p>' +
           '<div class="tie-all">' + chips + '</div>' +
-        '</div>');
-      return;
+        '</div>';
     }
 
     // --- ③ 通常：表彰台（同率順位もきれいに扱う） ---
@@ -1002,9 +1002,27 @@
         '</div>';
     }).join("");
 
-    openGrandStage(grandHead() +
+    return grandHead() +
       '<div class="podium">' + podiumHtml + '</div>' +
-      (rest.length ? '<div class="grand-rest">' + restHtml + '</div>' : ''));
+      (rest.length ? '<div class="grand-rest">' + restHtml + '</div>' : '');
+  }
+
+  // 「🖥️ 大画面で盛大に発表」を押したときの入口：
+  // まず盛大画面の背景・雰囲気だけを出し、「大きく結果を見る」を押した瞬間に
+  // 表彰台のアニメーション＋紙吹雪が一気に流れる演出にする
+  function renderGrandResult() {
+    var overlay = openGrandStage(grandHead() +
+      '<div class="grand-msg-card">' +
+        '<div class="grand-msg-emoji">🏆</div>' +
+        '<h2>結果発表の準備ができました</h2>' +
+        '<p>タイミングを合わせて、ボタンを押してください。</p>' +
+        '<button class="btn btn-primary" id="reveal" style="margin-top:18px;">🎉 大きく結果を見る</button>' +
+      '</div>'
+    );
+    overlay.querySelector("#reveal").onclick = function () {
+      overlay.querySelector(".grand-inner").innerHTML = buildGrandContent();
+      try { overlay.confetti.burst(); } catch (e) {}
+    };
   }
 
   /* =====================================================================
@@ -1014,7 +1032,7 @@
        → ③ 判定
        対象チーム・回答は Firebase 経由で他の端末とも同期されます。
      ===================================================================== */
-  var sd = { teams: [], answers: {}, autoDetected: false };
+  var sd = { teams: [], answers: {}, autoDetected: false, order: [] };
 
   // 現在の集計から、1位が同率になっているチームを検出する
   // （1位がすでに1チームに決まっている場合はサドンデスは行わない運用のため、対象外＝空配列を返す）
@@ -1029,6 +1047,7 @@
     sd.teams = detectTieTeams();
     sd.autoDetected = sd.teams.length > 0;
     sd.answers = {};
+    sd.order = [];
     renderSDTeams();
   }
 
@@ -1039,7 +1058,7 @@
 
     var hint = sd.autoDetected
       ? '<p class="sub">集計結果から、1位が同率になっているチーム（' + sd.teams.map(function (t) { return esc(t) + 'チーム'; }).join('・') + '）を自動で選択しました。必要に応じてタップで追加・解除できます。</p>'
-      : '<p class="sub">現在、1位の同率はありません。対象チームを手動でタップして選ぶこともできます（2チーム以上）。</p>';
+      : '<p class="sub">現在、1位の同率はありません。2位・3位などの同率を解決したい場合も、対象チームをタップして選んでください（2チーム以上）。</p>';
 
     var card = el(
       '<div class="card">' +
@@ -1071,7 +1090,7 @@
     var actions = el(
       '<div class="btn-row mt">' +
         '<button class="btn btn-ghost" id="back">← 役割選択にもどる</button>' +
-        '<button class="btn btn-primary" id="next"' + (sd.teams.length < 2 ? ' disabled' : '') + '>次へ →</button>' +
+        '<button class="btn btn-primary" id="next"' + (sd.teams.length < 2 ? ' disabled' : '') + '>🔥 サドンデス問題で判定 →</button>' +
       '</div>'
     );
     app.appendChild(actions);
@@ -1084,6 +1103,94 @@
       store.setSuddenDeath({ active: true, teams: sd.teams.slice(), answers: {} });
       renderSDAnswer();
     };
+
+    if (sd.teams.length >= 2) {
+      var manualBtn = el('<button class="btn btn-secondary mt" id="manual">🤝 じゃんけん等の結果を直接入力する</button>');
+      app.appendChild(manualBtn);
+      manualBtn.onclick = function () {
+        sd.order = [];
+        renderManualOrder();
+      };
+    }
+  }
+
+  /* --- じゃんけんなどで決まった順位を、そのまま手動で記録する --- */
+  function renderManualOrder() {
+    screen = "sdManual";
+    app.innerHTML = "";
+    app.appendChild(el(header()));
+
+    var card = el(
+      '<div class="card">' +
+        '<h2>🤝 順位を手動で決める</h2>' +
+        '<p class="sub">じゃんけんなどで決まった、勝った順にチームをタップしてください。もう一度タップすると取り消せます。</p>' +
+        '<div class="team-grid" id="grid"></div>' +
+      '</div>'
+    );
+    app.appendChild(card);
+
+    var grid = card.querySelector("#grid");
+    sd.teams.forEach(function (t) {
+      var pos = sd.order.indexOf(t);
+      var cell = el(
+        '<button class="team-cell' + (pos >= 0 ? ' selected' : '') + '">' +
+          '<span class="tletter">' + (pos >= 0 ? (pos + 1) : esc(t)) + '</span>' +
+          '<span class="tname">' + esc(t) + 'チーム</span>' +
+        '</button>'
+      );
+      cell.onclick = function () {
+        var p = sd.order.indexOf(t);
+        if (p >= 0) { sd.order.splice(p, 1); } else { sd.order.push(t); }
+        renderManualOrder();
+      };
+      grid.appendChild(cell);
+    });
+
+    var actions = el(
+      '<div class="btn-row mt">' +
+        '<button class="btn btn-ghost" id="back">← チーム選択にもどる</button>' +
+        '<button class="btn btn-primary" id="confirm"' + (sd.order.length !== sd.teams.length ? ' disabled' : '') + '>この順位で確定</button>' +
+      '</div>'
+    );
+    app.appendChild(actions);
+    actions.querySelector("#back").onclick = renderSDTeams;
+    actions.querySelector("#confirm").onclick = function () {
+      if (sd.order.length !== sd.teams.length) return;
+      store.addTieBreak(sd.teams.slice(), sd.order.slice());
+      renderManualOrderDone();
+    };
+  }
+
+  function renderManualOrderDone() {
+    screen = "sdManualDone";
+    app.innerHTML = "";
+    app.appendChild(el(header()));
+
+    var rowsHtml = sd.order.map(function (t, i) {
+      return '<div class="sd-result-row' + (i === 0 ? ' winner' : '') + '">' +
+          '<span>' + (i === 0 ? '🏆 ' : '') + esc(t) + 'チーム</span>' +
+          '<span>' + (i + 1) + '位</span>' +
+        '</div>';
+    }).join("");
+
+    var card = el(
+      '<div class="card">' +
+        '<h2>🤝 順位を記録しました</h2>' +
+        '<p class="sub">結果発表・大画面の順位に反映されます。</p>' +
+        rowsHtml +
+      '</div>'
+    );
+    app.appendChild(card);
+
+    var actions = el(
+      '<div class="btn-row mt">' +
+        '<button class="btn btn-secondary" id="redo">チーム選択からやり直す</button>' +
+        '<button class="btn btn-ghost" id="home">最初の画面へ</button>' +
+      '</div>'
+    );
+    app.appendChild(actions);
+    actions.querySelector("#redo").onclick = openSuddenDeath;
+    actions.querySelector("#home").onclick = function () { sd.teams = []; sd.order = []; renderHome(); };
   }
 
   // store から届いている最新の回答を sd.answers に反映する（届いていればそちらを優先）
