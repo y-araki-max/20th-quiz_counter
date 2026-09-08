@@ -379,9 +379,15 @@
     app.innerHTML = "";
     app.appendChild(el(header()));
 
+    var answerStaff = (CONFIG.answerStaff && CONFIG.answerStaff[t]) || "";
+    var staffHtml = answerStaff
+      ? '<div class="answer-staff">📱 クイズ回答担当：<b>' + esc(answerStaff) + '</b></div>'
+      : "";
+
     var card = el(
       '<div class="card">' +
         '<h2>' + esc(t) + 'チーム メンバー確認</h2>' +
+        staffHtml +
         '<p class="sub">来ている人にチェックを入れてください。</p>' +
         '<div id="mlist"></div>' +
       '</div>'
