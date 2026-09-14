@@ -142,11 +142,14 @@
         }
       },
 
-      // サドンデスの判定結果を記録（結果発表の順位に反映するため）
-      //   teams … 対象だったチームの配列、order … 勝った順に並べたチーム配列
-      addTieBreak: function (teams, order) {
+      // タイブレーク（サドンデス／じゃんけん）の判定結果を記録（結果発表の順位に反映するため）
+      //   teams  … 対象だったチーム（同点グループ）の配列
+      //   groups … 上位から並んだクラスターの配列。例：[["B"],["C","D"]] は
+      //            Bが1位、CとDはまだ同率のまま、という意味。
+      //   type   … "suddendeath"（サドンデス問題／手動入力）または "janken"
+      addTieBreak: function (teams, groups, type) {
         var hist = (cache.tieBreaks || []).slice();
-        hist.push({ teams: teams, order: order });
+        hist.push({ teams: teams, groups: groups, type: type });
         cache.tieBreaks = hist;
         saveLocal();
         if (mode === "online" && db) {
@@ -267,7 +270,8 @@
         '<p class="sub">テーブル担当スタッフか、司会（結果画面）かを選びます。</p>' +
         '<button class="btn btn-primary role-btn" id="go-staff">👥 テーブル担当（スタッフ）<small>チームを選んで回答を送信します</small></button>' +
         '<button class="btn btn-secondary role-btn" id="go-mc">🎤 司会・結果画面（MC）<small>集計状況の確認・結果発表を行います</small></button>' +
-        '<button class="btn btn-danger role-btn" id="go-sd">🔥 サドンデス<small>同率順位のタイブレークに使います</small></button>' +
+        '<button class="btn btn-danger role-btn" id="go-sd">🔥 サドンデス<small>1位の同率タイブレークに使います</small></button>' +
+        '<button class="btn btn-warn role-btn" id="go-janken">🤝 じゃんけん<small>2位・3位の同率タイブレークに使います</small></button>' +
       '</div>'
     );
     app.appendChild(c);
@@ -277,6 +281,7 @@
     document.getElementById("go-staff").onclick = renderTeamSelect;
     document.getElementById("go-mc").onclick = openMC;
     document.getElementById("go-sd").onclick = openSuddenDeath;
+    document.getElementById("go-janken").onclick = openJanken;
   }
 
   /* MC画面を開く（ロックがONなら合言葉画面へ） */
@@ -804,7 +809,7 @@
           '<div class="rank-head">' +
             (medal ? '<div class="medal">' + medal + '</div>' : '<div class="r-num">' + rank + '</div>') +
             '<div class="rt-letter">' + esc(row.team) + 'チーム</div>' +
-            '<div class="r-score"><b>' + row.correct + '</b> / ' + N_Q + '問</div>' +
+            '<div class="r-score"><b>' + row.correct + '</b> / ' + N_Q + '問' + sdTag(row) + '</div>' +
           '</div>' +
           (names.length ? '<div class="r-members-list">' + memberItems + '</div>' : '') +
         '</div>';
@@ -828,6 +833,13 @@
      ===================================================================== */
 
   // 順位を計算（同点は同順位）
+  //
+  // タイブレーク（サドンデス／じゃんけん）は「同点だったチーム集合 → 上位から並んだ
+  // クラスター（同順位グループ）の配列」という記録（tieBreaks）として保存されている。
+  // 例）B・C・Dチームが同点で、じゃんけんでBが勝った（CとDはまだ同率のまま）場合は
+  //     { teams:["B","C","D"], groups:[["B"],["C","D"]] } のように記録される。
+  // 一部だけ解決された残りの同率グループ（上の例の["C","D"]）に対して、あとから
+  // 別のじゃんけん記録が追加されればそれも再帰的に反映される。
   function computeRanking() {
     var arr = TEAM_KEYS.map(function (t) {
       var s = teamScore(t);
@@ -838,54 +850,72 @@
       return a.team < b.team ? -1 : 1;
     });
 
-    // 同点グループのうち、サドンデスで勝敗が決まっているものはその順番を反映する
     var tieBreaks = store.getTieBreaks();
-    function findOrder(teams) {
+
+    // 指定したチーム集合（順不同）にちょうど一致する、一番新しいタイブレーク記録を探す
+    function findRecord(teams) {
       for (var i = tieBreaks.length - 1; i >= 0; i--) {
         var tb = tieBreaks[i];
-        if (tb.teams.length === teams.length && teams.every(function (t) { return tb.teams.indexOf(t) >= 0; })) {
-          return tb.order;
+        var tbTeams = tb.teams || [];
+        if (tbTeams.length === teams.length && teams.every(function (t) { return tbTeams.indexOf(t) >= 0; })) {
+          return tb;
         }
       }
       return null;
     }
-    var resolvedTeams = {};
+
+    // サドンデス（数値クイズ）で1位が確定したチーム
+    var suddenDeathWinners = {};
+
+    // 同点だったチーム集合を、上位から並んだクラスター（同順位グループ）の配列に分解する
+    function resolveClusters(teams) {
+      var rec = findRecord(teams);
+      if (!rec) return [teams.slice()];
+      var groups = rec.groups || (rec.order ? rec.order.map(function (t) { return [t]; }) : null);
+      if (!groups || !groups.length) return [teams.slice()];
+      if (rec.type === "suddendeath" && groups[0] && groups[0].length === 1) {
+        suddenDeathWinners[groups[0][0]] = true;
+      }
+      var out = [];
+      groups.forEach(function (cluster) {
+        if (cluster.length > 1) {
+          resolveClusters(cluster).forEach(function (sub) { out.push(sub); });
+        } else if (cluster.length === 1) {
+          out.push(cluster.slice());
+        }
+      });
+      return out;
+    }
+
+    var byTeam = {};
+    arr.forEach(function (row) { byTeam[row.team] = row; });
+
+    var ranked = [];
     var idx = 0;
     while (idx < arr.length) {
       var end = idx;
       while (end < arr.length && arr[end].correct === arr[idx].correct) end++;
-      if (end - idx > 1) {
-        var order = findOrder(arr.slice(idx, end).map(function (r) { return r.team; }));
-        if (order) {
-          var byTeam = {};
-          arr.slice(idx, end).forEach(function (r) { byTeam[r.team] = r; });
-          var reordered = order.map(function (t) { return byTeam[t]; }).filter(Boolean);
-          for (var k = 0; k < reordered.length; k++) {
-            arr[idx + k] = reordered[k];
-            resolvedTeams[reordered[k].team] = true;
-          }
-        }
-      }
+      var groupTeams = arr.slice(idx, end).map(function (r) { return r.team; });
+      var clusters = (end - idx > 1) ? resolveClusters(groupTeams) : [groupTeams];
+      var rank = idx + 1;
+      clusters.forEach(function (cluster) {
+        cluster.forEach(function (t) {
+          var row = byTeam[t];
+          row.rank = rank;
+          ranked.push(row);
+        });
+        rank += cluster.length;
+      });
       idx = end;
     }
 
-    // 順位を割り振る（同点は同順位。ただしサドンデスで解決済みの相手同士は連番にする）
-    var lastRank = 0;
-    arr.forEach(function (row, i) {
-      var prev = i > 0 ? arr[i - 1] : null;
-      var tieWithPrev = prev && prev.correct === row.correct;
-      var bothResolved = tieWithPrev && resolvedTeams[prev.team] && resolvedTeams[row.team];
-      if (tieWithPrev && !bothResolved) { row.rank = lastRank; }
-      else { row.rank = i + 1; lastRank = row.rank; }
-    });
-    return arr;
+    ranked.forEach(function (row) { row.viaSuddenDeath = !!suddenDeathWinners[row.team]; });
+    return ranked;
   }
 
-  // チームのメンバー（名簿＋当日追加）
-  function memberNames(team) {
-    var savedM = store.getMembers()[team] || {};
-    var extras = savedM.extra || [];
-    return (CONFIG.teams[team] || []).slice().concat(extras);
+  // サドンデスで1位を勝ち取ったチームには、スコアの横に「（サドンデスゲーム）」と表示する
+  function sdTag(row) {
+    return row.viaSuddenDeath ? '<span class="sd-tag">（サドンデスゲーム）</span>' : "";
   }
 
   // 大画面の共通の枠（背景・タイトル・紙吹雪・閉じる/もう一度ボタン）を作る
@@ -965,14 +995,13 @@
     var rest = ranking.filter(function (r) { return r.rank > 3; });
 
     function teamCard(row, isFirst) {
-      var names = memberNames(row.team);
       var crown = isFirst ? '<div class="podium-crown">👑</div>' : "";
       return '<div class="podium-card">' +
           crown +
           '<div class="podium-medal">' + (medals[row.rank] || ("#" + row.rank)) + '</div>' +
+          '<div class="podium-rank-label">' + row.rank + '位</div>' +
           '<div class="podium-team">' + esc(row.team) + 'チーム</div>' +
-          '<div class="podium-score"><b>' + row.correct + '</b>/ ' + N_Q + '問</div>' +
-          (names.length ? '<div class="podium-members">' + names.map(esc).join(" ・ ") + '</div>' : "") +
+          '<div class="podium-score"><b>' + row.correct + '</b>/ ' + N_Q + '問' + sdTag(row) + '</div>' +
         '</div>';
     }
 
@@ -1058,7 +1087,7 @@
 
     var hint = sd.autoDetected
       ? '<p class="sub">集計結果から、1位が同率になっているチーム（' + sd.teams.map(function (t) { return esc(t) + 'チーム'; }).join('・') + '）を自動で選択しました。必要に応じてタップで追加・解除できます。</p>'
-      : '<p class="sub">現在、1位の同率はありません。2位・3位などの同率を解決したい場合も、対象チームをタップして選んでください（2チーム以上）。</p>';
+      : '<p class="sub">現在、1位の同率はありません。対象チームをタップして選んでください（2チーム以上）。<br>※2位・3位の同率は「🤝 じゃんけん」から決定してください。</p>';
 
     var card = el(
       '<div class="card">' +
@@ -1105,7 +1134,7 @@
     };
 
     if (sd.teams.length >= 2) {
-      var manualBtn = el('<button class="btn btn-secondary mt" id="manual">🤝 じゃんけん等の結果を直接入力する</button>');
+      var manualBtn = el('<button class="btn btn-secondary mt" id="manual">✏️ 結果を手動で入力する</button>');
       app.appendChild(manualBtn);
       manualBtn.onclick = function () {
         sd.order = [];
@@ -1114,7 +1143,7 @@
     }
   }
 
-  /* --- じゃんけんなどで決まった順位を、そのまま手動で記録する --- */
+  /* --- 紙で集めた回答などから、サドンデスの順位をそのまま手動で記録する --- */
   function renderManualOrder() {
     screen = "sdManual";
     app.innerHTML = "";
@@ -1122,8 +1151,8 @@
 
     var card = el(
       '<div class="card">' +
-        '<h2>🤝 順位を手動で決める</h2>' +
-        '<p class="sub">じゃんけんなどで決まった、勝った順にチームをタップしてください。もう一度タップすると取り消せます。</p>' +
+        '<h2>✏️ 結果を手動で入力する</h2>' +
+        '<p class="sub">紙で集めた回答などで決まった、勝った順にチームをタップしてください。もう一度タップすると取り消せます。</p>' +
         '<div class="team-grid" id="grid"></div>' +
       '</div>'
     );
@@ -1156,7 +1185,8 @@
     actions.querySelector("#back").onclick = renderSDTeams;
     actions.querySelector("#confirm").onclick = function () {
       if (sd.order.length !== sd.teams.length) return;
-      store.addTieBreak(sd.teams.slice(), sd.order.slice());
+      var groups = sd.order.map(function (t) { return [t]; });
+      store.addTieBreak(sd.teams.slice(), groups, "suddendeath");
       renderManualOrderDone();
     };
   }
@@ -1269,8 +1299,16 @@
     rows.sort(function (a, b) { return a.diff - b.diff; });
     var topDiff = (rows.length && rows[0].value !== null) ? rows[0].diff : null;
 
+    // 正解との差が同じチームは同率のまま1つのクラスターにまとめる（例：2チームとも1違いなら同率）
+    var groups = [];
+    rows.forEach(function (r) {
+      var last = groups[groups.length - 1];
+      if (last && last.diff === r.diff) { last.teams.push(r.team); }
+      else { groups.push({ diff: r.diff, teams: [r.team] }); }
+    });
+
     // 判定結果を記録 → 結果発表・大画面の順位にも反映される
-    store.addTieBreak(sd.teams.slice(), rows.map(function (r) { return r.team; }));
+    store.addTieBreak(sd.teams.slice(), groups.map(function (g) { return g.teams; }), "suddendeath");
 
     app.innerHTML = "";
     app.appendChild(el(header()));
@@ -1352,6 +1390,91 @@
       store.setSuddenDeathAnswer(t, v);
       renderSDTeamAnswer();
     };
+  }
+
+  /* =====================================================================
+     画面⑩：じゃんけん（2位・3位の同率タイブレーク）
+       ・1位の同率は🔥サドンデスで、2位・3位の同率はここ（じゃんけん）で決めます。
+       ・現在2位・3位で同率になっているチームだけを自動で表示します。
+       ・勝ったチームをタップして確定すると、そのチームだけがその順位に確定し、
+         残りのチームは同率のまま（4位以降は同率でもOKという運用のため、そこまでは決めません）。
+       ・確定後に残りがまだ複数チーム同率なら、続けてもう一度じゃんけんで決められます。
+     ===================================================================== */
+  var jk = { selection: {} };
+
+  // 現在2位・3位で同率になっているグループを検出する（1位のタイブレークはサドンデス側で扱う）
+  function detectJankenGroups() {
+    var ranking = computeRanking();
+    var groups = [];
+    [2, 3].forEach(function (rk) {
+      var teams = ranking.filter(function (r) { return r.rank === rk; }).map(function (r) { return r.team; });
+      if (teams.length > 1) groups.push({ rank: rk, teams: teams });
+    });
+    return groups;
+  }
+
+  function openJanken() {
+    jk.selection = {};
+    renderJanken();
+  }
+
+  function renderJanken() {
+    screen = "janken";
+    app.innerHTML = "";
+    app.appendChild(el(header()));
+
+    var groups = detectJankenGroups();
+    var rankLabel = { 2: "2位", 3: "3位" };
+
+    if (!groups.length) {
+      app.appendChild(el(
+        '<div class="card">' +
+          '<h2>🤝 じゃんけん</h2>' +
+          '<p class="sub">現在、2位・3位の同率はありません。</p>' +
+        '</div>'
+      ));
+    } else {
+      groups.forEach(function (g) {
+        var card = el(
+          '<div class="card">' +
+            '<h2>🤝 ' + rankLabel[g.rank] + 'が' + g.teams.length + 'チーム同率</h2>' +
+            '<p class="sub">じゃんけんに勝ったチームをタップして確定してください。' + rankLabel[g.rank] + 'はそのチームに決まり、残りのチームは同率のままになります。</p>' +
+            '<div class="team-grid" id="grid-' + g.rank + '"></div>' +
+            '<button class="btn btn-primary mt" id="confirm-' + g.rank + '" disabled>この結果で確定</button>' +
+          '</div>'
+        );
+        app.appendChild(card);
+
+        var grid = card.querySelector("#grid-" + g.rank);
+        var confirmBtn = card.querySelector("#confirm-" + g.rank);
+        g.teams.forEach(function (t) {
+          var cell = el(
+            '<button class="team-cell' + (jk.selection[g.rank] === t ? ' selected' : '') + '">' +
+              '<span class="tletter">' + esc(t) + '</span>' +
+              '<span class="tname">' + esc(t) + 'チーム</span>' +
+            '</button>'
+          );
+          cell.onclick = function () {
+            jk.selection[g.rank] = t;
+            grid.querySelectorAll(".team-cell").forEach(function (c) { c.classList.remove("selected"); });
+            cell.classList.add("selected");
+            confirmBtn.disabled = false;
+          };
+          grid.appendChild(cell);
+        });
+        confirmBtn.onclick = function () {
+          var winner = jk.selection[g.rank];
+          if (!winner) return;
+          var rest = g.teams.filter(function (t) { return t !== winner; });
+          store.addTieBreak(g.teams.slice(), [[winner], rest], "janken");
+          delete jk.selection[g.rank];
+          renderJanken();
+        };
+      });
+    }
+
+    app.appendChild(el('<button class="btn btn-ghost mt" id="home">← 役割選択にもどる</button>'));
+    document.getElementById("home").onclick = renderHome;
   }
 
   // 紙吹雪（外部ライブラリ不要・キャンバスで描画）
