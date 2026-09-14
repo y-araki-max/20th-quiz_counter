@@ -285,61 +285,64 @@ body{
 
 .grand-head{ text-align:center; flex:0 0 auto; }
 .grand-badge{
-  display:inline-block; letter-spacing:.24em; font-size:clamp(11px,1.2vw,15px); font-weight:700;
-  color:#bfe0ff; border:1px solid rgba(255,255,255,.28); padding:6px 18px; border-radius:999px;
+  display:inline-block; letter-spacing:.24em; font-size:clamp(10px,1.6vh,15px); font-weight:700;
+  color:#bfe0ff; border:1px solid rgba(255,255,255,.28); padding:4px 16px; border-radius:999px;
 }
 .grand-title{
-  font-size:clamp(34px,6.4vw,78px); font-weight:900; margin:14px 0 4px; letter-spacing:.06em;
+  font-size:clamp(22px,7vh,66px); font-weight:900; margin:0.8vh 0 0.2vh; letter-spacing:.06em;
   text-shadow:0 6px 40px rgba(42,139,234,.65);
   animation:dropIn .8s cubic-bezier(.2,.9,.25,1) both;
 }
 .grand-title .spark{ color:#ffd54a; display:inline-block; animation:twinkle 1.8s ease-in-out infinite; }
-.grand-sub{ color:#cfe4fb; font-size:clamp(13px,1.7vw,20px); margin:0; animation:dropIn .8s .1s both; }
+.grand-sub{ color:#cfe4fb; font-size:clamp(11px,2vh,18px); margin:0; animation:dropIn .8s .1s both; }
 
-/* 表彰台 */
+/* 表彰台
+   ※ 文字・アイコンのサイズは横幅(vw)ではなく縦幅(vh)基準にしています。
+     横に広く縦が低いウィンドウでも見出し・表彰台が肥大化しすぎず、
+     4位以降を表示する余白が必ず残るようにするためです。 */
 .podium{
-  display:flex; justify-content:center; align-items:flex-end; gap:clamp(10px,3vw,52px);
-  flex:0 0 auto; margin:auto 0; padding:16px 0 0;
+  display:flex; justify-content:center; align-items:flex-end; gap:clamp(8px,2.5vh,40px);
+  flex:0 0 auto; margin:1vh 0 0; padding:1vh 0 0;
 }
 .podium-col{ display:flex; flex-direction:column; align-items:center; }
 .podium-cards{
-  display:flex; gap:14px; align-items:flex-end; justify-content:center; flex-wrap:wrap;
-  margin-bottom:14px; max-width:min(92vw,880px);
+  display:flex; gap:10px; align-items:flex-end; justify-content:center; flex-wrap:wrap;
+  margin-bottom:1vh; max-width:min(92vw,880px);
 }
 .podium-tie{
-  font-size:clamp(12px,1.35vw,16px); font-weight:800; color:#0b3b6b;
+  font-size:clamp(10px,1.8vh,15px); font-weight:800; color:#0b3b6b;
   background:linear-gradient(180deg,#ffe08a,#f2c94c); border-radius:999px;
-  padding:5px 16px; margin-bottom:10px;
+  padding:4px 14px; margin-bottom:0.8vh;
   box-shadow:0 4px 16px rgba(232,180,35,.45);
   opacity:0; animation:riseCard .6s ease forwards; animation-delay:var(--d,0s);
 }
 .podium-card{
-  text-align:center; width:clamp(146px,20vw,260px);
+  text-align:center; width:clamp(120px,20vh,260px);
   opacity:0; transform:translateY(34px);
   animation:riseCard .7s ease forwards; animation-delay:var(--d,0s);
 }
-.podium-crown{ font-size:clamp(26px,3.2vw,44px); line-height:1; margin-bottom:-6px;
+.podium-crown{ font-size:clamp(16px,3.6vh,40px); line-height:1; margin-bottom:-4px;
   animation:twinkle 2.2s ease-in-out infinite; }
-.podium-medal{ font-size:clamp(40px,5.6vw,76px); line-height:1; filter:drop-shadow(0 6px 16px rgba(0,0,0,.45)); }
+.podium-medal{ font-size:clamp(30px,7.5vh,80px); line-height:1; filter:drop-shadow(0 6px 16px rgba(0,0,0,.45)); }
 .podium-rank-label{
-  font-size:clamp(13px,1.6vw,20px); font-weight:800; letter-spacing:.08em;
+  font-size:clamp(11px,2.4vh,20px); font-weight:800; letter-spacing:.08em;
   color:#bfe0ff; text-transform:uppercase;
 }
 .first .podium-rank-label{ color:#ffd54a; }
 .second .podium-rank-label{ color:#eef3f9; }
 .third .podium-rank-label{ color:#e9ad6d; }
 .podium-team{
-  font-size:clamp(24px,3.6vw,52px); font-weight:900; margin:2px 0 4px;
+  font-size:clamp(16px,5vh,50px); font-weight:900; margin:2px 0 3px;
   text-shadow:0 2px 10px rgba(0,0,0,.35);
 }
 .first .podium-team{ text-shadow:0 0 26px rgba(255,213,74,.75); }
-.podium-score{ font-size:clamp(12px,1.4vw,18px); color:#cfe4fb; }
-.podium-score b{ font-size:clamp(28px,3.8vw,56px); color:#ffd54a; font-weight:900; margin-right:2px; }
-.podium-score .sd-tag{ color:#ffd54a; font-size:clamp(10px,1vw,13px); margin-top:4px; }
+.podium-score{ font-size:clamp(10px,2vh,20px); color:#cfe4fb; }
+.podium-score b{ font-size:clamp(20px,5vh,54px); color:#ffd54a; font-weight:900; margin-right:2px; }
+.podium-score .sd-tag{ color:#ffd54a; font-size:clamp(9px,1.3vh,14px); margin-top:3px; }
 .podium-bar{
   width:100%; border-radius:16px 16px 0 0; box-sizing:border-box;
-  display:flex; align-items:flex-start; justify-content:center; padding-top:12px;
-  font-size:clamp(26px,3.6vw,58px); font-weight:900;
+  display:flex; align-items:flex-start; justify-content:center; padding-top:10px;
+  font-size:clamp(18px,4.4vh,54px); font-weight:900;
   box-shadow:inset 0 3px 0 rgba(255,255,255,.35), 0 -8px 34px rgba(0,0,0,.28);
   transform-origin:bottom; transform:scaleY(0);
   animation:riseBar .8s cubic-bezier(.2,.85,.2,1) forwards; animation-delay:var(--d,0s);
@@ -347,26 +350,32 @@ body{
 .podium-col.first{ order:2; }
 .podium-col.second{ order:1; }
 .podium-col.third{ order:3; }
-.first .podium-bar{ height:clamp(170px,30vh,300px); background:linear-gradient(180deg,#ffe08a,#e8a81b); color:#5a3d00; }
-.second .podium-bar{ height:clamp(132px,23vh,230px); background:linear-gradient(180deg,#eef3f9,#aec1d1); color:#37485a; }
-.third .podium-bar{ height:clamp(108px,18vh,190px); background:linear-gradient(180deg,#e9ad6d,#b06f33); color:#492808; }
+.first .podium-bar{ height:clamp(100px,26vh,280px); background:linear-gradient(180deg,#ffe08a,#e8a81b); color:#5a3d00; }
+.second .podium-bar{ height:clamp(80px,20vh,220px); background:linear-gradient(180deg,#eef3f9,#aec1d1); color:#37485a; }
+.third .podium-bar{ height:clamp(64px,16vh,180px); background:linear-gradient(180deg,#e9ad6d,#b06f33); color:#492808; }
 
-/* 4位以降（表彰台〈1〜3位〉は常に全体表示、4位以降はここだけスクロール） */
+/* 4位以降（表彰台〈1〜3位〉は常に全体表示。ここは高さを控えめに固定して
+   1〜3位を大きく目立たせる。余った余白は表彰台とここの間に自動で入る。
+   人数に応じて列数を詰め、スクロールなしで全員を1画面に収める） */
 .grand-rest{
-  flex:1 1 auto; min-height:0; width:100%; max-width:1040px; margin:min(3vh,22px) auto 0;
-  display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:10px;
-  align-content:start; overflow-y:auto; padding-bottom:4px;
+  flex:0 0 auto; max-height:20vh; margin:auto auto 0; width:100%; max-width:1200px;
+  display:grid; grid-auto-rows:1fr; gap:min(1vh,8px);
+  overflow:hidden; padding-bottom:2px;
 }
 .grand-rest-row{
-  display:flex; align-items:center; gap:14px;
+  display:flex; align-items:center; gap:10px; min-width:0; min-height:0;
   background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.14);
-  border-radius:12px; padding:11px 18px;
+  border-radius:10px; padding:clamp(4px,1.4vh,11px) clamp(8px,1.6vw,18px);
   opacity:0; animation:fadeIn .5s ease forwards;
+  overflow:hidden;
 }
-.grand-rest-row .gr-rank{ font-size:clamp(16px,1.6vw,22px); font-weight:900; color:#9fc4ee; min-width:44px; }
-.grand-rest-row .gr-team{ flex:1; font-weight:800; font-size:clamp(15px,1.5vw,19px); }
-.grand-rest-row .gr-score{ color:#cfe4fb; font-size:14px; }
-.grand-rest-row .gr-score b{ color:#ffd54a; font-size:clamp(18px,1.9vw,24px); font-weight:900; }
+.grand-rest-row .gr-rank{ font-size:clamp(12px,1.8vh,22px); font-weight:900; color:#9fc4ee; min-width:34px; flex:none; }
+.grand-rest-row .gr-team{
+  flex:1; min-width:0; font-weight:800; font-size:clamp(12px,1.8vh,19px);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.grand-rest-row .gr-score{ color:#cfe4fb; font-size:clamp(10px,1.3vh,14px); flex:none; white-space:nowrap; }
+.grand-rest-row .gr-score b{ color:#ffd54a; font-size:clamp(14px,2vh,24px); font-weight:900; }
 
 /* 回答なし／全チーム同点のときの案内カード */
 .grand-msg-card{

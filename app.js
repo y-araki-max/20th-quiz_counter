@@ -1030,10 +1030,13 @@
           '<div class="gr-score"><b>' + row.correct + '</b> / ' + N_Q + '問</div>' +
         '</div>';
     }).join("");
+    // 4位以降はスクロールさせず、最大2段（列数は人数に応じて調整）に収めて全員を表示する
+    var restCols = rest.length <= 4 ? rest.length : Math.ceil(rest.length / 2);
+    restCols = Math.max(1, Math.min(restCols, 5));
 
     return grandHead() +
       '<div class="podium">' + podiumHtml + '</div>' +
-      (rest.length ? '<div class="grand-rest">' + restHtml + '</div>' : '');
+      (rest.length ? '<div class="grand-rest" style="grid-template-columns:repeat(' + restCols + ',1fr)">' + restHtml + '</div>' : '');
   }
 
   // 「🖥️ 大画面で盛大に発表」を押したときの入口：
