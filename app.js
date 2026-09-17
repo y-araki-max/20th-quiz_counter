@@ -1495,8 +1495,8 @@
       return {
         x: Math.random() * canvas.width,
         y: fromTop ? (-20 - Math.random() * canvas.height) : (Math.random() * canvas.height),
-        w: 6 + Math.random() * 8,
-        h: 9 + Math.random() * 12,
+        w: 3 + Math.random() * 3,
+        h: 4 + Math.random() * 5,
         color: colors[Math.floor(Math.random() * colors.length)],
         rot: Math.random() * 6.28,
         vr: -0.12 + Math.random() * 0.24,
