@@ -306,27 +306,30 @@
 
   /* MC画面を開く（ロックがONなら合言葉画面へ） */
   function openMC() {
-    var g = CONFIG.mcGate;
-    if (g && g.enabled && g.buttons && g.buttons.length && g.answer) {
-      renderMCGate();
-    } else {
-      renderMC();
-    }
+    openWithGate(CONFIG.mcGate, "司会", "集計・結果画面", "mcgate", renderMC);
   }
 
   /* =====================================================================
-     画面：司会用ロック（正解の動物ボタンを押すと入れる）
+     画面：合言葉ロック（正解の動物ボタンを押すと進める。MC／1位決定戦／じゃんけん共通）
      ===================================================================== */
-  function renderMCGate() {
-    screen = "mcgate";
-    var g = CONFIG.mcGate;
+  // gate が有効なら合言葉画面を表示し、正解を押したら onUnlock を実行。無効ならそのまま onUnlock。
+  function openWithGate(gate, label, dest, screenName, onUnlock) {
+    if (gate && gate.enabled && gate.buttons && gate.buttons.length && gate.answer) {
+      renderGate(gate, label, dest, screenName, onUnlock);
+    } else {
+      onUnlock();
+    }
+  }
+
+  function renderGate(gate, label, dest, screenName, onUnlock) {
+    screen = screenName;
     app.innerHTML = "";
     app.appendChild(el(header()));
 
     var card = el(
       '<div class="card">' +
-        '<h2>🔒 司会用ロック</h2>' +
-        '<p class="sub">合言葉の動物ボタンを押すと、集計・結果画面に入れます。<br>（司会の方は、事前に聞いている動物を押してください）</p>' +
+        '<h2>🔒 ' + esc(label) + '用ロック</h2>' +
+        '<p class="sub">合言葉の動物ボタンを押すと、' + esc(dest) + 'に入れます。<br>（事前に聞いている動物を押してください）</p>' +
         '<div class="gate-grid" id="gate"></div>' +
         '<p class="gate-msg" id="gmsg">&nbsp;</p>' +
       '</div>'
@@ -335,11 +338,11 @@
 
     var grid = card.querySelector("#gate");
     var gmsg = card.querySelector("#gmsg");
-    g.buttons.forEach(function (b) {
+    gate.buttons.forEach(function (b) {
       var btn = el('<button class="gate-btn">' + esc(b) + '</button>');
       btn.onclick = function () {
-        if (String(b) === String(g.answer)) {
-          renderMC();
+        if (String(b) === String(gate.answer)) {
+          onUnlock();
         } else {
           gmsg.textContent = "ちがうみたい…もう一度どうぞ";
           btn.classList.add("wrong");
@@ -1098,11 +1101,13 @@
 
   // ホーム画面から「🔥 1位決定戦」で入るときの入口：自動検出した同率チームを選択済みにする
   function openSuddenDeath() {
-    sd.teams = detectTieTeams();
-    sd.autoDetected = sd.teams.length > 0;
-    sd.answers = {};
-    sd.order = [];
-    renderSDTeams();
+    openWithGate(CONFIG.sdGate, "1位決定戦", "1位決定戦", "sdgate", function () {
+      sd.teams = detectTieTeams();
+      sd.autoDetected = sd.teams.length > 0;
+      sd.answers = {};
+      sd.order = [];
+      renderSDTeams();
+    });
   }
 
   function renderSDTeams() {
@@ -1445,8 +1450,10 @@
   }
 
   function openJanken() {
-    jk.selection = {};
-    renderJanken();
+    openWithGate(CONFIG.jankenGate, "じゃんけん", "じゃんけん", "jankengate", function () {
+      jk.selection = {};
+      renderJanken();
+    });
   }
 
   function renderJanken() {
