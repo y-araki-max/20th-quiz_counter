@@ -218,6 +218,26 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   }
+
+  // 入力ミス防止の確認ダイアログ（アプリ内のカードデザインで表示。OKを押すと onOk を実行）
+  function showConfirmModal(message, onOk) {
+    var overlay = el(
+      '<div class="confirm-overlay">' +
+        '<div class="confirm-box">' +
+          '<p class="confirm-msg">' + esc(message).replace(/\n/g, "<br>") + '</p>' +
+          '<div class="btn-row">' +
+            '<button class="btn btn-ghost" id="confirm-cancel">キャンセル</button>' +
+            '<button class="btn btn-primary" id="confirm-ok">OK</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+    document.body.appendChild(overlay);
+    function close() { overlay.remove(); }
+    overlay.querySelector("#confirm-cancel").onclick = close;
+    overlay.querySelector("#confirm-ok").onclick = function () { close(); onOk(); };
+  }
+
   function header() {
     return '<div class="header">' +
       '<div class="badge">' + esc(CONFIG.companyName) + ' 20th Anniversary</div>' +
@@ -796,10 +816,12 @@
       var cls = rank <= 3 ? rankClass[rank - 1] : "";
       var medal = rank <= 3 ? medals[rank - 1] : "";
 
-      // 名簿のメンバー ＋ 当日追加した人（自由記述）を合わせて表示
+      // 出席チェックが入った名簿メンバー ＋ 当日追加した人（自由記述）を合わせて表示
+      // （出席チェックがまだ行われていないチームは、いったん名簿全員を表示する）
       var savedM = store.getMembers()[row.team] || {};
       var extras = savedM.extra || [];
-      var names = (CONFIG.teams[row.team] || []).slice().concat(extras);
+      var roster = CONFIG.teams[row.team] || [];
+      var names = (savedM.present ? roster.filter(function (n) { return savedM.present.indexOf(n) >= 0; }) : roster.slice()).concat(extras);
       var memberItems = names.map(function (n) {
         return '<div class="m-item">' + esc(n) + '</div>';
       }).join("");
@@ -1283,7 +1305,13 @@
     );
     app.appendChild(actions);
     actions.querySelector("#back").onclick = renderSDTeams;
-    actions.querySelector("#judge").onclick = renderSDResult;
+    actions.querySelector("#judge").onclick = function () {
+      var confirmLines = sd.teams.map(function (t) {
+        var raw = sd.answers[t];
+        return t + "チーム：" + (raw !== undefined && raw !== null && raw !== "" ? raw : "（未入力）");
+      }).join("\n");
+      showConfirmModal("この数値で判定してよろしいですか？\n\n" + confirmLines, renderSDResult);
+    };
   }
 
   function renderSDResult() {
@@ -1468,10 +1496,12 @@
         confirmBtn.onclick = function () {
           var winner = jk.selection[g.rank];
           if (!winner) return;
-          var rest = g.teams.filter(function (t) { return t !== winner; });
-          store.addTieBreak(g.teams.slice(), [[winner], rest], "janken");
-          delete jk.selection[g.rank];
-          renderJanken();
+          showConfirmModal(winner + "チームの勝ちで確定してよろしいですか？\n（" + rankLabel[g.rank] + "は" + winner + "チームに決まります）", function () {
+            var rest = g.teams.filter(function (t) { return t !== winner; });
+            store.addTieBreak(g.teams.slice(), [[winner], rest], "janken");
+            delete jk.selection[g.rank];
+            renderJanken();
+          });
         };
       });
     }

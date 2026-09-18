@@ -117,6 +117,20 @@ body{
 .sd-result-row:last-child{ border-bottom:none; }
 .sd-result-row.winner{ background:var(--ok-bg); border-radius:10px; padding:10px 8px; font-weight:700; }
 
+/* --- 確認ダイアログ（入力ミス防止） --- */
+.confirm-overlay{
+  position:fixed; inset:0; z-index:2000;
+  background:rgba(6,30,58,.45);
+  display:flex; align-items:center; justify-content:center;
+  padding:20px;
+}
+.confirm-box{
+  background:var(--white); border-radius:16px; padding:20px;
+  box-shadow:0 10px 30px rgba(6,30,58,.3);
+  max-width:360px; width:100%;
+}
+.confirm-msg{ margin:0 0 16px; font-size:16px; font-weight:600; color:var(--ink); line-height:1.6; }
+
 /* --- メンバー確認 --- */
 .member{
   display:flex; align-items:center; gap:12px; padding:12px 4px;
