@@ -105,7 +105,7 @@
       getMembers: function () { return cache.members || {}; },
       getTeamAnswers: function (team) { return (cache.answers && cache.answers[team]) || {}; },
 
-      // サドンデスの状態を保存（対象チーム一覧をまとめて上書き）
+      // 1位決定戦の状態を保存（対象チーム一覧をまとめて上書き）
       setSuddenDeath: function (data) {
         cache.suddenDeath = data;
         saveLocal();
@@ -116,7 +116,7 @@
         }
       },
 
-      // サドンデスの1チーム分の回答を保存（各チームのスマホから送信）
+      // 1位決定戦の1チーム分の回答を保存（各チームのスマホから送信）
       setSuddenDeathAnswer: function (team, value) {
         if (!cache.suddenDeath) cache.suddenDeath = { active: true, teams: [team], answers: {} };
         if (!cache.suddenDeath.answers) cache.suddenDeath.answers = {};
@@ -131,7 +131,7 @@
 
       getSuddenDeath: function () { return cache.suddenDeath || null; },
 
-      // サドンデスを終了（対象チームのスマホは通常の画面にもどる）
+      // 1位決定戦を終了（対象チームのスマホは通常の画面にもどる）
       clearSuddenDeath: function () {
         cache.suddenDeath = null;
         saveLocal();
@@ -142,11 +142,11 @@
         }
       },
 
-      // タイブレーク（サドンデス／じゃんけん）の判定結果を記録（結果発表の順位に反映するため）
+      // タイブレーク（1位決定戦／じゃんけん）の判定結果を記録（結果発表の順位に反映するため）
       //   teams  … 対象だったチーム（同点グループ）の配列
       //   groups … 上位から並んだクラスターの配列。例：[["B"],["C","D"]] は
       //            Bが1位、CとDはまだ同率のまま、という意味。
-      //   type   … "suddendeath"（サドンデス問題／手動入力）または "janken"
+      //   type   … "suddendeath"（1位決定戦問題／手動入力）または "janken"
       addTieBreak: function (teams, groups, type) {
         var hist = (cache.tieBreaks || []).slice();
         hist.push({ teams: teams, groups: groups, type: type });
@@ -290,7 +290,7 @@
         '<p class="sub">テーブル担当スタッフか、司会（結果画面）かを選びます。</p>' +
         '<button class="btn btn-primary role-btn" id="go-staff">👥 テーブル担当（スタッフ）<small>チームを選んで回答を送信します</small></button>' +
         '<button class="btn btn-secondary role-btn" id="go-mc">🎤 司会・結果画面（MC）<small>集計状況の確認・結果発表を行います</small></button>' +
-        '<button class="btn btn-danger role-btn" id="go-sd">🔥 サドンデス<small>1位の同率タイブレークに使います</small></button>' +
+        '<button class="btn btn-danger role-btn" id="go-sd">🔥 1位決定戦<small>1位の同率タイブレークに使います</small></button>' +
         '<button class="btn btn-warn role-btn" id="go-janken">🤝 じゃんけん<small>2位・3位の同率タイブレークに使います</small></button>' +
       '</div>'
     );
@@ -376,7 +376,7 @@
       var s = teamScore(t);
       var answered = s.answered === N_Q;
       var inSD = sdTeams.indexOf(t) >= 0;
-      var label = esc(t) + 'チーム' + (inSD ? '（🔥サドンデス回答待ち）' : (answered ? '（送信済）' : ''));
+      var label = esc(t) + 'チーム' + (inSD ? '（🔥1位決定戦回答待ち）' : (answered ? '（送信済）' : ''));
       var cell = el(
         '<button class="team-cell' + (answered ? ' answered' : '') + (inSD ? ' sd-pending' : '') + '">' +
           '<span class="tletter">' + esc(t) + '</span>' +
@@ -805,7 +805,7 @@
     app.appendChild(grandBtn);
     grandBtn.onclick = renderGrandResult;
 
-    // スコア計算 → 並べ替え（正解数の多い順、同点はチーム名順。サドンデスの結果があれば反映）
+    // スコア計算 → 並べ替え（正解数の多い順、同点はチーム名順。1位決定戦の結果があれば反映）
     var arr = computeRanking();
 
     var medals = ["🥇", "🥈", "🥉"];
@@ -856,7 +856,7 @@
 
   // 順位を計算（同点は同順位）
   //
-  // タイブレーク（サドンデス／じゃんけん）は「同点だったチーム集合 → 上位から並んだ
+  // タイブレーク（1位決定戦／じゃんけん）は「同点だったチーム集合 → 上位から並んだ
   // クラスター（同順位グループ）の配列」という記録（tieBreaks）として保存されている。
   // 例）B・C・Dチームが同点で、じゃんけんでBが勝った（CとDはまだ同率のまま）場合は
   //     { teams:["B","C","D"], groups:[["B"],["C","D"]] } のように記録される。
@@ -886,7 +886,7 @@
       return null;
     }
 
-    // サドンデス（数値クイズ）で1位が確定したチーム
+    // 1位決定戦（数値クイズ）で1位が確定したチーム
     var suddenDeathWinners = {};
 
     // 同点だったチーム集合を、上位から並んだクラスター（同順位グループ）の配列に分解する
@@ -935,9 +935,9 @@
     return ranked;
   }
 
-  // サドンデスで1位を勝ち取ったチームには、スコアの横に「（サドンデスゲーム）」と表示する
+  // 1位決定戦で1位を勝ち取ったチームには、スコアの横に「（1位決定戦ゲーム）」と表示する
   function sdTag(row) {
-    return row.viaSuddenDeath ? '<span class="sd-tag">（サドンデスゲーム）</span>' : "";
+    return row.viaSuddenDeath ? '<span class="sd-tag">（1位決定戦ゲーム）</span>' : "";
   }
 
   // 大画面の共通の枠（背景・タイトル・紙吹雪・閉じる/もう一度ボタン）を作る
@@ -1080,7 +1080,7 @@
   }
 
   /* =====================================================================
-     画面⑨：サドンデス（同率順位のタイブレーク）
+     画面⑨：1位決定戦（同率順位のタイブレーク）
        ① 司会が対象チームを選ぶ → ② 各チームが自分のスマホで回答を送信
          （司会の画面でも直接入力できます＝紙で集めた回答の代理入力用）
        → ③ 判定
@@ -1089,14 +1089,14 @@
   var sd = { teams: [], answers: {}, autoDetected: false, order: [] };
 
   // 現在の集計から、1位が同率になっているチームを検出する
-  // （1位がすでに1チームに決まっている場合はサドンデスは行わない運用のため、対象外＝空配列を返す）
+  // （1位がすでに1チームに決まっている場合は1位決定戦は行わない運用のため、対象外＝空配列を返す）
   function detectTieTeams() {
     var ranking = computeRanking();
     var top = ranking.filter(function (r) { return r.rank === 1; });
     return top.length > 1 ? top.map(function (r) { return r.team; }) : [];
   }
 
-  // ホーム画面から「🔥 サドンデス」で入るときの入口：自動検出した同率チームを選択済みにする
+  // ホーム画面から「🔥 1位決定戦」で入るときの入口：自動検出した同率チームを選択済みにする
   function openSuddenDeath() {
     sd.teams = detectTieTeams();
     sd.autoDetected = sd.teams.length > 0;
@@ -1116,7 +1116,7 @@
 
     var card = el(
       '<div class="card">' +
-        '<h2>🔥 サドンデス：対象チームを選択</h2>' +
+        '<h2>🔥 1位決定戦：対象チームを選択</h2>' +
         hint +
         '<div class="team-grid" id="grid"></div>' +
       '</div>'
@@ -1144,7 +1144,7 @@
     var actions = el(
       '<div class="btn-row mt">' +
         '<button class="btn btn-ghost" id="back">← 役割選択にもどる</button>' +
-        '<button class="btn btn-primary" id="next"' + (sd.teams.length < 2 ? ' disabled' : '') + '>🔥 サドンデス問題で判定 →</button>' +
+        '<button class="btn btn-primary" id="next"' + (sd.teams.length < 2 ? ' disabled' : '') + '>🔥 1位決定戦問題で判定 →</button>' +
       '</div>'
     );
     app.appendChild(actions);
@@ -1168,7 +1168,7 @@
     }
   }
 
-  /* --- 紙で集めた回答などから、サドンデスの順位をそのまま手動で記録する --- */
+  /* --- 紙で集めた回答などから、1位決定戦の順位をそのまま手動で記録する --- */
   function renderManualOrder() {
     screen = "sdManual";
     app.innerHTML = "";
@@ -1264,8 +1264,8 @@
 
     if (!Q || Q.answer === undefined || Q.answer === null) {
       app.appendChild(el(
-        '<div class="card"><h2>🔥 サドンデス</h2>' +
-          '<p class="sub">config.js に suddenDeath（サドンデス問題）が設定されていません。</p></div>'
+        '<div class="card"><h2>🔥 1位決定戦</h2>' +
+          '<p class="sub">config.js に suddenDeath（1位決定戦問題）が設定されていません。</p></div>'
       ));
       app.appendChild(el('<button class="btn btn-ghost" id="back">← もどる</button>'));
       document.getElementById("back").onclick = renderSDTeams;
@@ -1285,7 +1285,7 @@
 
     var card = el(
       '<div class="card">' +
-        '<h2>🔥 サドンデス問題</h2>' +
+        '<h2>🔥 1位決定戦問題</h2>' +
         '<p class="q-text">' + esc(Q.q) + '</p>' +
         '<p class="sub">対象チームは、自分のスマホの「テーブル担当」からチームを選ぶと回答を送信できます（自動でここに反映されます）。この画面で直接入力・修正することもできます。</p>' +
         rowsHtml +
@@ -1355,7 +1355,7 @@
 
     var card = el(
       '<div class="card">' +
-        '<h2>🔥 サドンデス結果</h2>' +
+        '<h2>🔥 1位決定戦結果</h2>' +
         '<p class="sub">正解：' + esc(Q.answer) + ' ／ 正解に近い順に表示しています。</p>' +
         rowsHtml +
       '</div>'
@@ -1373,7 +1373,7 @@
     actions.querySelector("#home").onclick = function () { sd.teams = []; sd.answers = {}; renderHome(); };
   }
 
-  /* --- サドンデス：対象チーム自身のスマホでの回答画面（chooseTeam から遷移） --- */
+  /* --- 1位決定戦：対象チーム自身のスマホでの回答画面（chooseTeam から遷移） --- */
   function renderSDTeamAnswer() {
     screen = "sdTeamAnswer";
     var t = current.team;
@@ -1386,7 +1386,7 @@
     var stillActive = sdState && sdState.active && sdState.teams && sdState.teams.indexOf(t) >= 0;
     if (!stillActive || !Q) {
       app.appendChild(el(
-        '<div class="card"><h2>🔥 サドンデス</h2><p class="sub">サドンデスは終了しました。司会の案内をお待ちください。</p></div>'
+        '<div class="card"><h2>🔥 1位決定戦</h2><p class="sub">1位決定戦は終了しました。司会の案内をお待ちください。</p></div>'
       ));
       app.appendChild(el('<button class="btn btn-ghost" id="home">最初の画面へ</button>'));
       document.getElementById("home").onclick = renderHome;
@@ -1398,7 +1398,7 @@
 
     var card = el(
       '<div class="card">' +
-        '<h2>🔥 サドンデス問題</h2>' +
+        '<h2>🔥 1位決定戦問題</h2>' +
         '<div class="q-num">' + esc(t) + 'チーム</div>' +
         '<p class="q-text">' + esc(Q.q) + '</p>' +
         '<div class="sd-row"><input type="number" inputmode="decimal" id="sd-input" value="' + esc(currentVal) + '" placeholder="回答の数値"></div>' +
@@ -1425,7 +1425,7 @@
 
   /* =====================================================================
      画面⑩：じゃんけん（2位・3位の同率タイブレーク）
-       ・1位の同率は🔥サドンデスで、2位・3位の同率はここ（じゃんけん）で決めます。
+       ・1位の同率は🔥1位決定戦で、2位・3位の同率はここ（じゃんけん）で決めます。
        ・現在2位・3位で同率になっているチームだけを自動で表示します。
        ・勝ったチームをタップして確定すると、そのチームだけがその順位に確定し、
          残りのチームは同率のまま（4位以降は同率でもOKという運用のため、そこまでは決めません）。
@@ -1433,7 +1433,7 @@
      ===================================================================== */
   var jk = { selection: {} };
 
-  // 現在2位・3位で同率になっているグループを検出する（1位のタイブレークはサドンデス側で扱う）
+  // 現在2位・3位で同率になっているグループを検出する（1位のタイブレークは1位決定戦側で扱う）
   function detectJankenGroups() {
     var ranking = computeRanking();
     var groups = [];
